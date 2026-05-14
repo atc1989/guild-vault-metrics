@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm dlx *)",
+      "Bash(pnpm add *)",
+      "Bash(pnpm exec *)",
+      "Bash(pnpm dev *)",
+      "Bash(curl -s -o /dev/null -w \"Status: %{http_code}\\\\nFinal URL: %{url_effective}\\\\n\" -L http://localhost:3000/)"
+    ]
+  }
+}
