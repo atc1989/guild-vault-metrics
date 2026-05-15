@@ -1,4 +1,12 @@
-import { ArrowDownRight, ArrowUpRight, Hash, Users } from "lucide-react"
+import {
+  ArrowDownRight,
+  ArrowUpRight,
+  Award,
+  Coins,
+  Hash,
+  Percent,
+  Users,
+} from "lucide-react"
 
 import {
   Card,
@@ -10,6 +18,8 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { formatCurrency, formatNumber } from "@/lib/format"
 import type { TransactionVariant } from "@/lib/supabase/types"
+
+const WITHHOLDING_RATE = 0.05
 
 type Stats = {
   count: number
@@ -29,11 +39,19 @@ export function SummaryCards({
   const amountLabel = variant === "debit" ? "Total Debit" : "Total Credit"
   const amountHint =
     variant === "debit"
-      ? "Sum of all debit amounts in the current filter."
-      : "Sum of all credit amounts in the current filter."
+      ? "Net — sum of debit amounts in the current filter."
+      : "Net — sum of credit amounts in the current filter."
+
+  const grossCommission = stats.totalAmount / (1 - WITHHOLDING_RATE)
+  const withholdingTax = grossCommission - stats.totalAmount
+
+  const grossHint = `${amountLabel} ÷ (1 − 5%) — grossed up from ${amountLabel}.`
+
+  const gridClass =
+    "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6"
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className={gridClass}>
       <Card>
         <CardHeader>
           <CardDescription className="flex items-center gap-2">
@@ -69,6 +87,38 @@ export function SummaryCards({
       <Card>
         <CardHeader>
           <CardDescription className="flex items-center gap-2">
+            <Coins className="size-4" />
+            Gross Commission
+          </CardDescription>
+          <CardTitle className="text-2xl tabular-nums">
+            {formatCurrency(grossCommission)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">{grossHint}</p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardDescription className="flex items-center gap-2">
+            <Percent className="size-4" />
+            Withholding Tax
+          </CardDescription>
+          <CardTitle className="text-2xl tabular-nums">
+            {formatCurrency(withholdingTax)}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-xs text-muted-foreground">
+            5% withheld on the gross commission.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardDescription className="flex items-center gap-2">
             <Users className="size-4" />
             Unique Accounts
           </CardDescription>
@@ -85,7 +135,10 @@ export function SummaryCards({
 
       <Card>
         <CardHeader>
-          <CardDescription>Top Remarks Code</CardDescription>
+          <CardDescription className="flex items-center gap-2">
+            <Award className="size-4" />
+            Top Remarks Code
+          </CardDescription>
           <CardTitle className="text-base truncate">
             {stats.topRemarksCode?.code ?? "—"}
           </CardTitle>
