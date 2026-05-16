@@ -1,0 +1,206 @@
+import "server-only"
+
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+import { PDFDocument } from "pdf-lib"
+
+import { getMonthlyTotals } from "@/lib/queries/monthly"
+import type { TransactionFilters } from "@/lib/validations"
+
+export const DEFAULT_ATC = "WI515"
+export const DEFAULT_DESCRIPTION = "Distributor Commission"
+export const DEFAULT_WITHHOLDING_RATE = 0.05
+
+export type Quarter = 1 | 2 | 3 | 4
+
+export type QuarterOverride = { year: number; q: Quarter }
+
+/** Parses a "YYYY-Q[1-4]" string into a {year, q} pair. */
+export function parseQuarterParam(raw: string | null): QuarterOverride | null {
+  if (!raw) return null
+  const match = /^(\d{4})-Q([1-4])$/.exec(raw.trim())
+  if (!match) return null
+  return {
+    year: Number(match[1]),
+    q: Number(match[2]) as Quarter,
+  }
+}
+
+const FIELDS = {
+  periodFrom: "Text_1",
+  periodTo: "Text_2",
+  row1: {
+    description: "Text_18",
+    atc: "Text_28",
+    m1: "Text_39",
+    m2: "Text_50",
+    m3: "Text_61",
+    total: "Text_72",
+    tax: "Text_83",
+  },
+  totalRow: {
+    m1: "Text_49",
+    m2: "Text_60",
+    m3: "Text_71",
+    total: "Text_82",
+    tax: "Text_93",
+  },
+} as const
+
+function quarterOf(month: number): Quarter {
+  if (month <= 3) return 1
+  if (month <= 6) return 2
+  if (month <= 9) return 3
+  return 4
+}
+
+function quarterMonths(q: Quarter): [number, number, number] {
+  const start = (q - 1) * 3 + 1
+  return [start, start + 1, start + 2]
+}
+
+function quarterDates(year: number, q: Quarter) {
+  const startMonth = (q - 1) * 3
+  const start = new Date(Date.UTC(year, startMonth, 1))
+  const end = new Date(Date.UTC(year, startMonth + 3, 0, 23, 59, 59))
+  return { start, end }
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0")
+}
+
+function formatMMDDYYYY(d: Date) {
+  return `${pad2(d.getUTCMonth() + 1)}${pad2(d.getUTCDate())}${d.getUTCFullYear()}`
+}
+
+function formatAmount(n: number) {
+  // Two leading spaces nudge the value off the left cell border so the
+  // text doesn't visually touch the gridline.
+  return `  ${n.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`
+}
+
+function parseAnchor(filters: TransactionFilters): Date {
+  const raw = filters.from || filters.to
+  if (raw) {
+    const d = new Date(`${raw}T00:00:00Z`)
+    if (!Number.isNaN(d.getTime())) return d
+  }
+  return new Date()
+}
+
+export type Bir2307Options = {
+  filters: TransactionFilters
+  atc?: string
+  description?: string
+  withholdingRate?: number
+  /** Explicit quarter override; takes precedence over filter-derived quarter. */
+  quarter?: QuarterOverride
+}
+
+export type Bir2307Result = {
+  pdf: Uint8Array
+  filename: string
+  quarterLabel: string
+  periodFrom: Date
+  periodTo: Date
+  monthly: { month: number; total: number }[]
+  quarterTotal: number
+  taxWithheld: number
+}
+
+export async function generateBir2307({
+  filters,
+  atc = DEFAULT_ATC,
+  description = DEFAULT_DESCRIPTION,
+  withholdingRate = DEFAULT_WITHHOLDING_RATE,
+  quarter,
+}: Bir2307Options): Promise<Bir2307Result> {
+  let year: number
+  let q: Quarter
+  if (quarter) {
+    year = quarter.year
+    q = quarter.q
+  } else {
+    const anchor = parseAnchor(filters)
+    year = anchor.getUTCFullYear()
+    q = quarterOf(anchor.getUTCMonth() + 1)
+  }
+  const { start, end } = quarterDates(year, q)
+  const [m1, m2, m3] = quarterMonths(q)
+
+  // Always aggregate over the calendar quarter, not whatever range the
+  // filter happened to set — keeps the 2307 valid even when the user's
+  // date filter is a partial window.
+  const buckets = await getMonthlyTotals("credit", filters, {
+    fromIso: start.toISOString(),
+    toIso: end.toISOString(),
+  })
+  const byMonth = new Map(buckets.map((b) => [b.month, b.total]))
+  const t1 = byMonth.get(m1) ?? 0
+  const t2 = byMonth.get(m2) ?? 0
+  const t3 = byMonth.get(m3) ?? 0
+  const quarterTotal = t1 + t2 + t3
+  const taxWithheld = quarterTotal * withholdingRate
+
+  const templatePath = path.join(
+    process.cwd(),
+    "public",
+    "templates",
+    "bir-2307.pdf"
+  )
+  const bytes = await readFile(templatePath)
+  const pdf = await PDFDocument.load(bytes)
+  const form = pdf.getForm()
+
+  const set = (name: string, value: string) => {
+    try {
+      form.getTextField(name).setText(value)
+    } catch {
+      // field name drifted — fail loud so we notice
+      throw new Error(`BIR 2307 template is missing field: ${name}`)
+    }
+  }
+
+  set(FIELDS.periodFrom, formatMMDDYYYY(start))
+  set(FIELDS.periodTo, formatMMDDYYYY(end))
+
+  set(FIELDS.row1.description, description)
+  set(FIELDS.row1.atc, atc)
+  set(FIELDS.row1.m1, formatAmount(t1))
+  set(FIELDS.row1.m2, formatAmount(t2))
+  set(FIELDS.row1.m3, formatAmount(t3))
+  set(FIELDS.row1.total, formatAmount(quarterTotal))
+  set(FIELDS.row1.tax, formatAmount(taxWithheld))
+
+  set(FIELDS.totalRow.m1, formatAmount(t1))
+  set(FIELDS.totalRow.m2, formatAmount(t2))
+  set(FIELDS.totalRow.m3, formatAmount(t3))
+  set(FIELDS.totalRow.total, formatAmount(quarterTotal))
+  set(FIELDS.totalRow.tax, formatAmount(taxWithheld))
+
+  // Leave the form interactive — pdf-lib's flatten() trips on widget
+  // appearance streams in this template ("Unexpected N type: undefined").
+  // The filled values still render correctly in any PDF viewer.
+
+  const out = await pdf.save()
+  const quarterLabel = `Q${q}-${year}`
+
+  return {
+    pdf: out,
+    filename: `BIR2307-${quarterLabel}.pdf`,
+    quarterLabel,
+    periodFrom: start,
+    periodTo: end,
+    monthly: [
+      { month: m1, total: t1 },
+      { month: m2, total: t2 },
+      { month: m3, total: t3 },
+    ],
+    quarterTotal,
+    taxWithheld,
+  }
+}

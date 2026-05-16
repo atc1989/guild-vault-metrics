@@ -85,7 +85,7 @@ export function curatedRemarksCodes(
     : CURATED_CREDIT_REMARKS_CODES
 }
 
-export const FORMATS = ["csv", "xlsx", "pdf"] as const
+export const FORMATS = ["csv", "xlsx", "pdf", "bir2307"] as const
 export type ExportFormat = (typeof FORMATS)[number]
 
 export const exportSearchParams = {

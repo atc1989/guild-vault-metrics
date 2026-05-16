@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { toCsv } from "@/lib/export/csv"
 import { toXlsx } from "@/lib/export/excel"
 import { toPdf } from "@/lib/export/pdf"
+import { generateBir2307, parseQuarterParam } from "@/lib/export/bir2307"
 import { exportColumnsFor } from "@/lib/export/columns"
 import { CONTENT_TYPES, exportFilename } from "@/lib/export/filename"
 import { getTransactions } from "@/lib/queries/transactions"
@@ -48,9 +49,39 @@ export async function GET(request: Request) {
   const variant = parseVariant(url.searchParams.get("variant"))
   const format = parseFormat(url.searchParams.get("format"))
   const filters = parseFilters(url.searchParams)
-  const columns = exportColumnsFor(variant)
 
   try {
+    if (format === "bir2307") {
+      if (variant !== "credit") {
+        return NextResponse.json(
+          { error: "BIR 2307 export is available only on the credit tab." },
+          { status: 400 }
+        )
+      }
+      const atc = url.searchParams.get("atc") || undefined
+      const rateRaw = url.searchParams.get("rate")
+      const rate = rateRaw ? Number(rateRaw) : undefined
+      const description = url.searchParams.get("description") || undefined
+      const quarter = parseQuarterParam(url.searchParams.get("quarter"))
+
+      const result = await generateBir2307({
+        filters,
+        atc,
+        description,
+        withholdingRate:
+          typeof rate === "number" && Number.isFinite(rate) ? rate : undefined,
+        quarter: quarter ?? undefined,
+      })
+
+      const headers = new Headers({
+        "Content-Type": CONTENT_TYPES.bir2307,
+        "Content-Disposition": `attachment; filename="${result.filename}"`,
+        "Cache-Control": "no-store",
+      })
+      return new Response(new Uint8Array(result.pdf), { headers })
+    }
+
+    const columns = exportColumnsFor(variant)
     const { rows } = await getTransactions(variant, filters, {
       paginate: false,
     })

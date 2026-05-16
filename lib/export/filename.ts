@@ -5,6 +5,7 @@ const EXT: Record<ExportFormat, string> = {
   csv: "csv",
   xlsx: "xlsx",
   pdf: "pdf",
+  bir2307: "pdf",
 }
 
 export function exportFilename(
@@ -23,4 +24,5 @@ export const CONTENT_TYPES: Record<ExportFormat, string> = {
   csv: "text/csv; charset=utf-8",
   xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   pdf: "application/pdf",
+  bir2307: "application/pdf",
 }

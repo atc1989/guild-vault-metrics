@@ -5,7 +5,16 @@
       "Bash(pnpm add *)",
       "Bash(pnpm exec *)",
       "Bash(pnpm dev *)",
-      "Bash(curl -s -o /dev/null -w \"Status: %{http_code}\\\\nFinal URL: %{url_effective}\\\\n\" -L http://localhost:3000/)"
+      "Bash(curl -s -o /dev/null -w \"Status: %{http_code}\\\\nFinal URL: %{url_effective}\\\\n\" -L http://localhost:3000/)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\najee\\\\Desktop\\\\guild-vault\\\\public\\\\templates\" && cp \"C:\\\\Users\\\\najee\\\\Downloads\\\\BIR 2307-DURAN LINDA.pdf\" \"C:\\\\Users\\\\najee\\\\Desktop\\\\guild-vault\\\\public\\\\templates\\\\bir-2307.pdf\" && ls -la \"C:\\\\Users\\\\najee\\\\Desktop\\\\guild-vault\\\\public\\\\templates\\\\\")",
+      "Bash(node scripts/inspect-bir2307.mjs)",
+      "Bash(node scripts/verify-2307.mjs)",
+      "Bash(curl -s -o \"C:/Users/najee/Desktop/guild-vault/scripts/q1-2025.pdf\" -w \"Status: %{http_code}\\\\nSize: %{size_download}\\\\n\" \"http://localhost:3000/api/export?variant=credit&format=bir2307&quarter=2025-Q1\")",
+      "Bash(curl -s -o \"C:/Users/najee/Desktop/guild-vault/scripts/q2-2025.pdf\" -w \"Status: %{http_code}\\\\nSize: %{size_download}\\\\n\" \"http://localhost:3000/api/export?variant=credit&format=bir2307&quarter=2025-Q2\")",
+      "Bash(node scripts/verify-quarters.mjs)",
+      "Bash(node scripts/diag-q2-2026.mjs)",
+      "Bash(node scripts/diag-april.mjs)",
+      "Bash(node scripts/verify-fix.mjs)"
     ]
   }
 }

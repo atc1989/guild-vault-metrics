@@ -44,7 +44,14 @@ function applyFilters<T extends QueryBuilder>(
     q = q.or(orExpr)
   }
   if (filters.from) q = q.gte("DATE", filters.from)
-  if (filters.to) q = q.lte("DATE", filters.to)
+  if (filters.to) {
+    // The user picks a calendar day in the date-range filter. Postgres
+    // coerces a bare "YYYY-MM-DD" to midnight UTC, which would clip any
+    // transactions later in that day. Treat the upper bound as inclusive
+    // of the entire day so the page totals reconcile with monthly
+    // aggregations (e.g. the BIR 2307 export).
+    q = q.lte("DATE", `${filters.to}T23:59:59.999Z`)
+  }
   if (filters.accounts.length > 0) q = q.in("ACCOUNT", filters.accounts)
   if (filters.remarks_codes.length > 0)
     q = q.in("REMARKS_CODE", filters.remarks_codes)
