@@ -17,6 +17,10 @@ export type MonthlyTotal = {
   total: number
 }
 
+export type AccountMonthlyTotal = MonthlyTotal & {
+  account: string
+}
+
 /**
  * Aggregates the amount column by calendar month, scoped to the given
  * filter range. Used by the BIR 2307 generator to break the quarter
@@ -83,4 +87,66 @@ export async function getMonthlyTotals(
   return Array.from(buckets.entries())
     .map(([month, total]) => ({ month, total }))
     .sort((a, b) => a.month - b.month)
+}
+
+export async function getMonthlyTotalsByAccount(
+  variant: TransactionVariant,
+  filters: TransactionFilters,
+  range: { fromIso: string; toIso: string }
+): Promise<AccountMonthlyTotal[]> {
+  const supabase = createSupabaseServerClient()
+  const table = TRANSACTION_TABLES[variant]
+  const amountCol = AMOUNT_COLUMNS[variant]
+
+  let query = supabase
+    .from(table)
+    .select(`DATE, ACCOUNT, ${amountCol}`)
+    .gte("DATE", range.fromIso)
+    .lte("DATE", range.toIso)
+    .limit(FETCH_LIMIT)
+
+  if (filters.q.trim()) {
+    const term = `%${filters.q.trim().replace(/[(),]/g, " ")}%`
+    const orExpr = SEARCH_COLUMNS.map((col) => `${col}.ilike.${term}`).join(",")
+    query = query.or(orExpr)
+  }
+  if (filters.accounts.length > 0) {
+    query = query.in("ACCOUNT", filters.accounts)
+  }
+  if (filters.remarks_codes.length > 0) {
+    query = query.in("REMARKS_CODE", filters.remarks_codes)
+  }
+
+  const { data, error } = (await query) as {
+    data: Array<Record<string, unknown>> | null
+    error: { message: string } | null
+  }
+  if (error) throw new Error(`getMonthlyTotalsByAccount failed: ${error.message}`)
+
+  const buckets = new Map<string, number>()
+  for (const row of data ?? []) {
+    const account = typeof row.ACCOUNT === "string" ? row.ACCOUNT : ""
+    if (!account) continue
+    const dateRaw = row.DATE
+    if (typeof dateRaw !== "string") continue
+    const match = /^\d{4}-(\d{2})-/.exec(dateRaw)
+    if (!match) continue
+    const month = Number(match[1])
+    if (!Number.isFinite(month) || month < 1 || month > 12) continue
+    const amount = row[amountCol]
+    const num =
+      typeof amount === "number" ? amount : parseFloat(String(amount ?? 0))
+    if (Number.isNaN(num)) continue
+    const key = `${account}\u0000${month}`
+    buckets.set(key, (buckets.get(key) ?? 0) + num)
+  }
+
+  return Array.from(buckets.entries())
+    .map(([key, total]) => {
+      const [account, monthRaw] = key.split("\u0000")
+      return { account, month: Number(monthRaw), total }
+    })
+    .sort((a, b) =>
+      a.account === b.account ? a.month - b.month : a.account.localeCompare(b.account)
+    )
 }
