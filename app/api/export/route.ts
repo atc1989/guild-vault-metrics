@@ -30,13 +30,16 @@ function parseFormat(raw: string | null): ExportFormat {
 }
 
 function parseFilters(params: URLSearchParams): TransactionFilters {
-  const accountsRaw = params.get("accounts") ?? ""
+  const accounts = params
+    .getAll("accounts")
+    .flatMap((value) => value.split(","))
+    .filter(Boolean)
   const remarksRaw = params.get("remarks_codes") ?? ""
   return {
     q: params.get("q") ?? "",
     from: params.get("from") ?? "",
     to: params.get("to") ?? "",
-    accounts: accountsRaw ? accountsRaw.split(",").filter(Boolean) : [],
+    accounts,
     remarks_codes: remarksRaw ? remarksRaw.split(",").filter(Boolean) : [],
     page: 1,
     per_page: DEFAULT_PAGE_SIZE,
