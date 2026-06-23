@@ -99,7 +99,6 @@ export function DataTableExportMenu({
         selectedAccounts.length === 1 ? "" : "s"
       }`
     : "all filtered rows"
-  const birDescription = selectedAccounts.join(", ")
 
   function buildUrl(format: ExportFormat, extra: Record<string, string> = {}) {
     const url = new URL("/api/export", window.location.origin)
@@ -157,7 +156,7 @@ export function DataTableExportMenu({
               Tax forms
               {selectedAccounts.length > 0 && (
                 <span className="block font-normal">
-                  BIR 2307 uses the selected accounts as the description.
+                  BIR 2307 lists selected accounts on separate rows.
                 </span>
               )}
             </DropdownMenuLabel>
@@ -179,12 +178,7 @@ export function DataTableExportMenu({
                       triggerDownload(
                         "bir2307",
                         `BIR 2307 (${choice.label})`,
-                        {
-                          quarter: choice.param,
-                          ...(birDescription
-                            ? { description: birDescription }
-                            : {}),
-                        }
+                        { quarter: choice.param }
                       )
                     }
                   >
