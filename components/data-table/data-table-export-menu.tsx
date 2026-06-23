@@ -76,6 +76,18 @@ function buildQuarterChoices(): QuarterChoice[] {
   return choices
 }
 
+function bir2307ExportParams(
+  choice: QuarterChoice,
+  selectedAccounts: string[]
+): Record<string, string> {
+  return {
+    quarter: choice.param,
+    ...(selectedAccounts.length > 0
+      ? { description: selectedAccounts.join(", ") }
+      : {}),
+  }
+}
+
 export function DataTableExportMenu({
   variant,
 }: {
@@ -85,11 +97,24 @@ export function DataTableExportMenu({
   const pathname = usePathname()
 
   const isCredit = variant === "credit"
-  const quarterChoices = React.useMemo(buildQuarterChoices, [])
+  const quarterChoices = React.useMemo(() => buildQuarterChoices(), [])
+  const selectedAccounts = React.useMemo(
+    () =>
+      params
+        .getAll("accounts")
+        .flatMap((value) => value.split(","))
+        .filter(Boolean),
+    [params]
+  )
+  const exportScopeLabel = selectedAccounts.length
+    ? `${selectedAccounts.length} selected account${
+        selectedAccounts.length === 1 ? "" : "s"
+      }`
+    : "all filtered rows"
 
   function buildUrl(format: ExportFormat, extra: Record<string, string> = {}) {
     const url = new URL("/api/export", window.location.origin)
-    params.forEach((value, key) => url.searchParams.set(key, value))
+    params.forEach((value, key) => url.searchParams.append(key, value))
     url.searchParams.delete("page")
     url.searchParams.delete("per_page")
     url.searchParams.set("variant", variant)
@@ -122,8 +147,7 @@ export function DataTableExportMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-[240px]">
         <DropdownMenuLabel className="text-xs text-muted-foreground">
-          {pathname?.includes("credit") ? "Credit" : "Debit"} — all filtered
-          rows
+          {pathname?.includes("credit") ? "Credit" : "Debit"} — {exportScopeLabel}
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
@@ -142,6 +166,11 @@ export function DataTableExportMenu({
             <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs text-muted-foreground">
               Tax forms
+              {selectedAccounts.length > 0 && (
+                <span className="block font-normal">
+                  BIR 2307 creates one form page per selected account.
+                </span>
+              )}
             </DropdownMenuLabel>
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -161,7 +190,7 @@ export function DataTableExportMenu({
                       triggerDownload(
                         "bir2307",
                         `BIR 2307 (${choice.label})`,
-                        { quarter: choice.param }
+                        bir2307ExportParams(choice, selectedAccounts)
                       )
                     }
                   >
