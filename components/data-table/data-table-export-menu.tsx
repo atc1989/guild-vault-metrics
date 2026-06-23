@@ -156,7 +156,7 @@ export function DataTableExportMenu({
               Tax forms
               {selectedAccounts.length > 0 && (
                 <span className="block font-normal">
-                  BIR 2307 lists selected accounts on separate rows.
+                  BIR 2307 creates one form page per selected account.
                 </span>
               )}
             </DropdownMenuLabel>
