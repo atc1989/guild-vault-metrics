@@ -87,7 +87,11 @@ export function DataTableExportMenu({
   const isCredit = variant === "credit"
   const quarterChoices = React.useMemo(() => buildQuarterChoices(), [])
   const selectedAccounts = React.useMemo(
-    () => params.get("accounts")?.split(",").filter(Boolean) ?? [],
+    () =>
+      params
+        .getAll("accounts")
+        .flatMap((value) => value.split(","))
+        .filter(Boolean),
     [params]
   )
   const exportScopeLabel = selectedAccounts.length
@@ -95,11 +99,10 @@ export function DataTableExportMenu({
         selectedAccounts.length === 1 ? "" : "s"
       }`
     : "all filtered rows"
-  const birDescription = selectedAccounts.join(", ")
 
   function buildUrl(format: ExportFormat, extra: Record<string, string> = {}) {
     const url = new URL("/api/export", window.location.origin)
-    params.forEach((value, key) => url.searchParams.set(key, value))
+    params.forEach((value, key) => url.searchParams.append(key, value))
     url.searchParams.delete("page")
     url.searchParams.delete("per_page")
     url.searchParams.set("variant", variant)
@@ -153,7 +156,7 @@ export function DataTableExportMenu({
               Tax forms
               {selectedAccounts.length > 0 && (
                 <span className="block font-normal">
-                  BIR 2307 uses the selected accounts as the description.
+                  BIR 2307 lists selected accounts on separate rows.
                 </span>
               )}
             </DropdownMenuLabel>

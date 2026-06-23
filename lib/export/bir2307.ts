@@ -4,7 +4,10 @@ import { readFile } from "node:fs/promises"
 import path from "node:path"
 import { PDFDocument } from "pdf-lib"
 
-import { getMonthlyTotals } from "@/lib/queries/monthly"
+import {
+  getMonthlyTotals,
+  getMonthlyTotalsByAccount,
+} from "@/lib/queries/monthly"
 import type { TransactionFilters } from "@/lib/validations"
 
 export const DEFAULT_ATC = "WI515"
@@ -29,15 +32,15 @@ export function parseQuarterParam(raw: string | null): QuarterOverride | null {
 const FIELDS = {
   periodFrom: "Text_1",
   periodTo: "Text_2",
-  row1: {
-    description: "Text_18",
-    atc: "Text_28",
-    m1: "Text_39",
-    m2: "Text_50",
-    m3: "Text_61",
-    total: "Text_72",
-    tax: "Text_83",
-  },
+  detailRows: Array.from({ length: 10 }, (_, i) => ({
+    description: `Text_${18 + i}`,
+    atc: `Text_${28 + i}`,
+    m1: `Text_${39 + i}`,
+    m2: `Text_${50 + i}`,
+    m3: `Text_${61 + i}`,
+    total: `Text_${72 + i}`,
+    tax: `Text_${83 + i}`,
+  })),
   totalRow: {
     m1: "Text_49",
     m2: "Text_60",
@@ -92,6 +95,25 @@ function parseAnchor(filters: TransactionFilters): Date {
   return new Date()
 }
 
+type BirDetailRow = {
+  description: string
+  m1: number
+  m2: number
+  m3: number
+}
+
+function totalsForMonths(
+  buckets: { month: number; total: number }[],
+  months: [number, number, number]
+): [number, number, number] {
+  const byMonth = new Map(buckets.map((b) => [b.month, b.total]))
+  return [
+    byMonth.get(months[0]) ?? 0,
+    byMonth.get(months[1]) ?? 0,
+    byMonth.get(months[2]) ?? 0,
+  ]
+}
+
 export type Bir2307Options = {
   filters: TransactionFilters
   atc?: string
@@ -135,14 +157,39 @@ export async function generateBir2307({
   // Always aggregate over the calendar quarter, not whatever range the
   // filter happened to set — keeps the 2307 valid even when the user's
   // date filter is a partial window.
-  const buckets = await getMonthlyTotals("credit", filters, {
+  const range = {
     fromIso: start.toISOString(),
     toIso: end.toISOString(),
-  })
-  const byMonth = new Map(buckets.map((b) => [b.month, b.total]))
-  const t1 = byMonth.get(m1) ?? 0
-  const t2 = byMonth.get(m2) ?? 0
-  const t3 = byMonth.get(m3) ?? 0
+  }
+  if (filters.accounts.length > FIELDS.detailRows.length) {
+    throw new Error(
+      `BIR 2307 supports up to ${FIELDS.detailRows.length} selected accounts.`
+    )
+  }
+  const selectedAccounts = filters.accounts
+  const detailRows: BirDetailRow[] = []
+  if (selectedAccounts.length > 0) {
+    const accountBuckets = await getMonthlyTotalsByAccount(
+      "credit",
+      filters,
+      range
+    )
+    for (const account of selectedAccounts) {
+      const [a1, a2, a3] = totalsForMonths(
+        accountBuckets.filter((b) => b.account === account),
+        [m1, m2, m3]
+      )
+      detailRows.push({ description: account, m1: a1, m2: a2, m3: a3 })
+    }
+  } else {
+    const buckets = await getMonthlyTotals("credit", filters, range)
+    const [a1, a2, a3] = totalsForMonths(buckets, [m1, m2, m3])
+    detailRows.push({ description, m1: a1, m2: a2, m3: a3 })
+  }
+
+  const t1 = detailRows.reduce((sum, row) => sum + row.m1, 0)
+  const t2 = detailRows.reduce((sum, row) => sum + row.m2, 0)
+  const t3 = detailRows.reduce((sum, row) => sum + row.m3, 0)
   const quarterTotal = t1 + t2 + t3
   const taxWithheld = quarterTotal * withholdingRate
 
@@ -168,13 +215,17 @@ export async function generateBir2307({
   set(FIELDS.periodFrom, formatMMDDYYYY(start))
   set(FIELDS.periodTo, formatMMDDYYYY(end))
 
-  set(FIELDS.row1.description, description)
-  set(FIELDS.row1.atc, atc)
-  set(FIELDS.row1.m1, formatAmount(t1))
-  set(FIELDS.row1.m2, formatAmount(t2))
-  set(FIELDS.row1.m3, formatAmount(t3))
-  set(FIELDS.row1.total, formatAmount(quarterTotal))
-  set(FIELDS.row1.tax, formatAmount(taxWithheld))
+  detailRows.forEach((row, i) => {
+    const fields = FIELDS.detailRows[i]
+    const rowTotal = row.m1 + row.m2 + row.m3
+    set(fields.description, row.description)
+    set(fields.atc, atc)
+    set(fields.m1, formatAmount(row.m1))
+    set(fields.m2, formatAmount(row.m2))
+    set(fields.m3, formatAmount(row.m3))
+    set(fields.total, formatAmount(rowTotal))
+    set(fields.tax, formatAmount(rowTotal * withholdingRate))
+  })
 
   set(FIELDS.totalRow.m1, formatAmount(t1))
   set(FIELDS.totalRow.m2, formatAmount(t2))
