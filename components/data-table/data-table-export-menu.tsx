@@ -76,6 +76,10 @@ function buildQuarterChoices(): QuarterChoice[] {
   return choices
 }
 
+function bir2307ExportParams(choice: QuarterChoice): Record<string, string> {
+  return { quarter: choice.param }
+}
+
 export function DataTableExportMenu({
   variant,
 }: {
@@ -178,12 +182,7 @@ export function DataTableExportMenu({
                       triggerDownload(
                         "bir2307",
                         `BIR 2307 (${choice.label})`,
-                        {
-                          quarter: choice.param,
-                          ...(birDescription
-                            ? { description: birDescription }
-                            : {}),
-                        }
+                        bir2307ExportParams(choice)
                       )
                     }
                   >
