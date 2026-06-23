@@ -103,6 +103,10 @@ function descriptionAccounts(description: string): string[] {
     .filter(Boolean)
 }
 
+function displayAccountName(account: string): string {
+  return account.replace(/\s*\[[^\]]*\]\s*$/, "").trim() || account
+}
+
 type BirDetailRow = {
   description: string
   m1: number
@@ -170,7 +174,9 @@ export async function generateBir2307({
     toIso: end.toISOString(),
   }
   const selectedAccounts =
-    filters.accounts.length > 0 ? filters.accounts : descriptionAccounts(description)
+    filters.accounts.length > 0
+      ? filters.accounts
+      : descriptionAccounts(description)
   const detailRows: BirDetailRow[] = []
   if (selectedAccounts.length > 0) {
     const accountFilters = { ...filters, accounts: selectedAccounts }
@@ -184,7 +190,12 @@ export async function generateBir2307({
         accountBuckets.filter((b) => b.account === account),
         [m1, m2, m3]
       )
-      detailRows.push({ description: account, m1: a1, m2: a2, m3: a3 })
+      detailRows.push({
+        description: displayAccountName(account),
+        m1: a1,
+        m2: a2,
+        m3: a3,
+      })
     }
   } else {
     const buckets = await getMonthlyTotals("credit", filters, range)
