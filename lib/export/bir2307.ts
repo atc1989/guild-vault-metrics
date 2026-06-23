@@ -95,6 +95,18 @@ function parseAnchor(filters: TransactionFilters): Date {
   return new Date()
 }
 
+function descriptionAccounts(description: string): string[] {
+  if (!description || description === DEFAULT_DESCRIPTION) return []
+  return description
+    .split(",")
+    .map((account) => account.trim())
+    .filter(Boolean)
+}
+
+function displayAccountName(account: string): string {
+  return account.replace(/\s*\[[^\]]*\]\s*$/, "").trim() || account
+}
+
 type BirDetailRow = {
   description: string
   m1: number
@@ -161,12 +173,16 @@ export async function generateBir2307({
     fromIso: start.toISOString(),
     toIso: end.toISOString(),
   }
-  const selectedAccounts = filters.accounts
+  const selectedAccounts =
+    filters.accounts.length > 0
+      ? filters.accounts
+      : descriptionAccounts(description)
   const detailRows: BirDetailRow[] = []
   if (selectedAccounts.length > 0) {
+    const accountFilters = { ...filters, accounts: selectedAccounts }
     const accountBuckets = await getMonthlyTotalsByAccount(
       "credit",
-      filters,
+      accountFilters,
       range
     )
     for (const account of selectedAccounts) {
@@ -174,7 +190,12 @@ export async function generateBir2307({
         accountBuckets.filter((b) => b.account === account),
         [m1, m2, m3]
       )
-      detailRows.push({ description: account, m1: a1, m2: a2, m3: a3 })
+      detailRows.push({
+        description: displayAccountName(account),
+        m1: a1,
+        m2: a2,
+        m3: a3,
+      })
     }
   } else {
     const buckets = await getMonthlyTotals("credit", filters, range)
@@ -188,6 +209,12 @@ export async function generateBir2307({
   const quarterTotal = t1 + t2 + t3
   const taxWithheld = quarterTotal * withholdingRate
 
+  if (detailRows.length > FIELDS.detailRows.length) {
+    throw new Error(
+      `BIR 2307 supports up to ${FIELDS.detailRows.length} account rows per form.`
+    )
+  }
+
   const templatePath = path.join(
     process.cwd(),
     "public",
@@ -195,27 +222,26 @@ export async function generateBir2307({
     "bir-2307.pdf"
   )
   const bytes = await readFile(templatePath)
-  const output = await PDFDocument.create()
+  const pdf = await PDFDocument.load(bytes)
+  const form = pdf.getForm()
 
-  for (const row of detailRows) {
-    const pdf = await PDFDocument.load(bytes)
-    const form = pdf.getForm()
+  const set = (name: string, value: string) => {
+    try {
+      form.getTextField(name).setText(value)
+    } catch {
+      // field name drifted — fail loud so we notice
+      throw new Error(`BIR 2307 template is missing field: ${name}`)
+    }
+  }
+
+  set(FIELDS.periodFrom, formatMMDDYYYY(start))
+  set(FIELDS.periodTo, formatMMDDYYYY(end))
+
+  detailRows.forEach((row, index) => {
     const rowTotal = row.m1 + row.m2 + row.m3
     const rowTax = rowTotal * withholdingRate
+    const fields = FIELDS.detailRows[index]
 
-    const set = (name: string, value: string) => {
-      try {
-        form.getTextField(name).setText(value)
-      } catch {
-        // field name drifted — fail loud so we notice
-        throw new Error(`BIR 2307 template is missing field: ${name}`)
-      }
-    }
-
-    set(FIELDS.periodFrom, formatMMDDYYYY(start))
-    set(FIELDS.periodTo, formatMMDDYYYY(end))
-
-    const fields = FIELDS.detailRows[0]
     set(fields.description, row.description)
     set(fields.atc, atc)
     set(fields.m1, formatAmount(row.m1))
@@ -223,22 +249,19 @@ export async function generateBir2307({
     set(fields.m3, formatAmount(row.m3))
     set(fields.total, formatAmount(rowTotal))
     set(fields.tax, formatAmount(rowTax))
+  })
 
-    set(FIELDS.totalRow.m1, formatAmount(row.m1))
-    set(FIELDS.totalRow.m2, formatAmount(row.m2))
-    set(FIELDS.totalRow.m3, formatAmount(row.m3))
-    set(FIELDS.totalRow.total, formatAmount(rowTotal))
-    set(FIELDS.totalRow.tax, formatAmount(rowTax))
-
-    const copiedPages = await output.copyPages(pdf, pdf.getPageIndices())
-    for (const page of copiedPages) output.addPage(page)
-  }
+  set(FIELDS.totalRow.m1, formatAmount(t1))
+  set(FIELDS.totalRow.m2, formatAmount(t2))
+  set(FIELDS.totalRow.m3, formatAmount(t3))
+  set(FIELDS.totalRow.total, formatAmount(quarterTotal))
+  set(FIELDS.totalRow.tax, formatAmount(taxWithheld))
 
   // Leave the form interactive — pdf-lib's flatten() trips on widget
   // appearance streams in this template ("Unexpected N type: undefined").
   // The filled values still render correctly in any PDF viewer.
 
-  const out = await output.save()
+  const out = await pdf.save()
   const quarterLabel = `Q${q}-${year}`
 
   return {

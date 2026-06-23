@@ -76,8 +76,16 @@ function buildQuarterChoices(): QuarterChoice[] {
   return choices
 }
 
-function bir2307ExportParams(choice: QuarterChoice): Record<string, string> {
-  return { quarter: choice.param }
+function bir2307ExportParams(
+  choice: QuarterChoice,
+  selectedAccounts: string[]
+): Record<string, string> {
+  return {
+    quarter: choice.param,
+    ...(selectedAccounts.length > 0
+      ? { description: selectedAccounts.join(", ") }
+      : {}),
+  }
 }
 
 export function DataTableExportMenu({
@@ -160,7 +168,7 @@ export function DataTableExportMenu({
               Tax forms
               {selectedAccounts.length > 0 && (
                 <span className="block font-normal">
-                  BIR 2307 creates one form page per selected account.
+                  BIR 2307 fills one Part III row per selected account.
                 </span>
               )}
             </DropdownMenuLabel>
@@ -182,7 +190,7 @@ export function DataTableExportMenu({
                       triggerDownload(
                         "bir2307",
                         `BIR 2307 (${choice.label})`,
-                        bir2307ExportParams(choice)
+                        bir2307ExportParams(choice, selectedAccounts)
                       )
                     }
                   >
