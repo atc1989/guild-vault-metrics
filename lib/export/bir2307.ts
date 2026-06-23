@@ -104,7 +104,7 @@ function descriptionAccounts(description: string): string[] {
 }
 
 function displayAccountName(account: string): string {
-  return account.replace(/\s*\[[^\]]*\]\s*$/, "").trim() || account
+  return account.replace(/\s*\[/, " [").trim() || account
 }
 
 type BirDetailRow = {
