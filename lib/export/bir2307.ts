@@ -114,6 +114,14 @@ function totalsForMonths(
   ]
 }
 
+function accountsFromDescription(description: string): string[] {
+  if (description === DEFAULT_DESCRIPTION) return []
+  return description
+    .split(",")
+    .map((account) => account.trim())
+    .filter(Boolean)
+}
+
 export type Bir2307Options = {
   filters: TransactionFilters
   atc?: string
@@ -161,12 +169,16 @@ export async function generateBir2307({
     fromIso: start.toISOString(),
     toIso: end.toISOString(),
   }
-  const selectedAccounts = filters.accounts
+  const selectedAccounts =
+    filters.accounts.length > 0
+      ? filters.accounts
+      : accountsFromDescription(description)
   const detailRows: BirDetailRow[] = []
   if (selectedAccounts.length > 0) {
+    const accountFilters = { ...filters, accounts: selectedAccounts }
     const accountBuckets = await getMonthlyTotalsByAccount(
       "credit",
-      filters,
+      accountFilters,
       range
     )
     for (const account of selectedAccounts) {
