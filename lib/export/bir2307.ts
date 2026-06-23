@@ -104,7 +104,7 @@ function descriptionAccounts(description: string): string[] {
 }
 
 function displayAccountName(account: string): string {
-  return account.replace(/\s*\[/, " [").trim() || account
+  return account.replace(/\s*\[[^\]]*\]\s*$/, "").trim() || account
 }
 
 type BirDetailRow = {
@@ -177,7 +177,7 @@ export async function generateBir2307({
     filters.accounts.length > 0
       ? filters.accounts
       : descriptionAccounts(description)
-  const detailRows: BirDetailRow[] = []
+  let detailRows: BirDetailRow[] = []
   if (selectedAccounts.length > 0) {
     const accountFilters = { ...filters, accounts: selectedAccounts }
     const accountBuckets = await getMonthlyTotalsByAccount(
@@ -185,18 +185,30 @@ export async function generateBir2307({
       accountFilters,
       range
     )
+    const rowsByDescription = new Map<string, BirDetailRow>()
+
     for (const account of selectedAccounts) {
+      const description = displayAccountName(account)
       const [a1, a2, a3] = totalsForMonths(
         accountBuckets.filter((b) => b.account === account),
         [m1, m2, m3]
       )
-      detailRows.push({
-        description: displayAccountName(account),
-        m1: a1,
-        m2: a2,
-        m3: a3,
-      })
+      const row = rowsByDescription.get(description)
+      if (row) {
+        row.m1 += a1
+        row.m2 += a2
+        row.m3 += a3
+      } else {
+        rowsByDescription.set(description, {
+          description,
+          m1: a1,
+          m2: a2,
+          m3: a3,
+        })
+      }
     }
+
+    detailRows = Array.from(rowsByDescription.values())
   } else {
     const buckets = await getMonthlyTotals("credit", filters, range)
     const [a1, a2, a3] = totalsForMonths(buckets, [m1, m2, m3])
